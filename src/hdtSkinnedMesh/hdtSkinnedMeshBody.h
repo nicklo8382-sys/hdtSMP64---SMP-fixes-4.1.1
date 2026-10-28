@@ -86,6 +86,8 @@ namespace hdt
 		std::vector<Bone> m_bones;
 
 		std::vector<Vertex> m_vertices;
+		// [FacialMorphCollision] original (pre-compaction) index of each entry in m_vertices
+		std::vector<UINT> m_origVertexIndex;
 		std::vector<VertexPos> m_vpos;
 
 		std::vector<RE::BSFixedString> m_tags;

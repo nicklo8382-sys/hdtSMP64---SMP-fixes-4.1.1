@@ -219,10 +219,13 @@ namespace hdt
 
 		UINT numUsed = 0;
 		std::vector<UINT> map(m_vertices.size());
+		m_origVertexIndex.clear();
+		m_origVertexIndex.reserve(m_vertices.size());
 		for (int i = 0; i < m_vertices.size(); ++i) {
 			if (flags[i]) {
 				m_vertices[numUsed] = m_vertices[i];
 				m_vpos[numUsed] = m_vpos[i];
+				m_origVertexIndex.push_back(static_cast<UINT>(i));
 				map[i] = numUsed++;
 			}
 		}

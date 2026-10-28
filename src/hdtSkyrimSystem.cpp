@@ -761,6 +761,10 @@ namespace hdt
 			if (dynamicShape)
 				dynamicVData = static_cast<uint8_t*>(dynamicShape->GetDynamicTrishapeRuntimeData().dynamicData);
 
+			// [FacialMorphCollision] keep the face geometry so its morphed vertices can be re-read every update
+			if (dynamicShape && dynamicVData)
+				body->m_morphSources.push_back({ RE::NiPointer<RE::BSDynamicTriShape>(dynamicShape), static_cast<uint32_t>(vertexStart), static_cast<uint32_t>(skinPartition->vertexCount) });
+
 			uint8_t boneOffset = 0;
 
 			if (vFlags & RE::BSGraphics::Vertex::Flags::VF_VERTEX)
