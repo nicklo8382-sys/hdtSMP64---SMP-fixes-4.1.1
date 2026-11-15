@@ -43,20 +43,5 @@ namespace hdt
 		};
 		std::vector<MorphSource> m_morphSources;
 		void refreshMorphedPositions();
-
-		// [BodyMorphCollision] Body / armor / schlong geometry (plain BSTriShape). RaceMenu / OBody body morphs replace
-		// the shape's skin partition (and its vertex buffer) after the physics system was built, so stock FSMP keeps
-		// colliding against the un-morphed BodySlide shape. We keep the shape and re-read its vertex positions whenever
-		// the vertex buffer changes (checked every update, cheap), plus a slow periodic refresh for in-place edits.
-		struct MeshSource
-		{
-			RE::NiPointer<RE::BSTriShape> shape;
-			uint32_t                      vertexStart = 0;
-			uint32_t                      vertexCount = 0;
-			const void*                   lastData = nullptr;  // vertex buffer the positions were last read from
-		};
-		std::vector<MeshSource> m_meshSources;
-		uint32_t                m_meshRefreshCounter = 0;
-		void                    refreshMeshPositions();
 	};
 }

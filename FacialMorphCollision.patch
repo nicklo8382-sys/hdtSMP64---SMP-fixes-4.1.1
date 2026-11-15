@@ -1,0 +1,118 @@
+diff --git a/src/hdtSkinnedMesh/hdtSkinnedMeshBody.cpp b/src/hdtSkinnedMesh/hdtSkinnedMeshBody.cpp
+index 0cfe1c5..605d086 100644
+--- a/src/hdtSkinnedMesh/hdtSkinnedMeshBody.cpp
++++ b/src/hdtSkinnedMesh/hdtSkinnedMeshBody.cpp
+@@ -219,10 +219,13 @@ namespace hdt
+ 
+ 		UINT numUsed = 0;
+ 		std::vector<UINT> map(m_vertices.size());
++		m_origVertexIndex.clear();
++		m_origVertexIndex.reserve(m_vertices.size());
+ 		for (int i = 0; i < m_vertices.size(); ++i) {
+ 			if (flags[i]) {
+ 				m_vertices[numUsed] = m_vertices[i];
+ 				m_vpos[numUsed] = m_vpos[i];
++				m_origVertexIndex.push_back(static_cast<UINT>(i));
+ 				map[i] = numUsed++;
+ 			}
+ 		}
+diff --git a/src/hdtSkinnedMesh/hdtSkinnedMeshBody.h b/src/hdtSkinnedMesh/hdtSkinnedMeshBody.h
+index 1358859..2a6ad6c 100644
+--- a/src/hdtSkinnedMesh/hdtSkinnedMeshBody.h
++++ b/src/hdtSkinnedMesh/hdtSkinnedMeshBody.h
+@@ -86,6 +86,8 @@ namespace hdt
+ 		std::vector<Bone> m_bones;
+ 
+ 		std::vector<Vertex> m_vertices;
++		// [FacialMorphCollision] original (pre-compaction) index of each entry in m_vertices
++		std::vector<UINT> m_origVertexIndex;
+ 		std::vector<VertexPos> m_vpos;
+ 
+ 		std::vector<RE::BSFixedString> m_tags;
+diff --git a/src/hdtSkyrimBody.cpp b/src/hdtSkyrimBody.cpp
+index aaab462..d9cd020 100644
+--- a/src/hdtSkyrimBody.cpp
++++ b/src/hdtSkyrimBody.cpp
+@@ -41,10 +41,44 @@ namespace hdt
+ 		return SkinnedMeshBody::canCollideWith(rhs);
+ 	}
+ 
++	void SkyrimBody::refreshMorphedPositions()
++	{
++		if (m_origVertexIndex.size() != m_vertices.size())
++			return;
++
++		for (auto& src : m_morphSources) {
++			auto* shape = src.shape.get();
++			if (!shape || !src.vertexCount)
++				continue;
++
++			auto& rd = shape->GetDynamicTrishapeRuntimeData();
++			RE::BSSpinLockGuard guard(rd.lock);
++
++			const auto* data = static_cast<const uint8_t*>(rd.dynamicData);
++			if (!data)
++				continue;
++			// dynamicData holds one 16-byte entry (x, y, z, pad) per vertex; skip if the buffer is smaller than expected
++			if (rd.dataSize && rd.dataSize < src.vertexCount * 16 && rd.dataSize != src.vertexCount)
++				continue;
++
++			const uint32_t begin = src.vertexStart;
++			const uint32_t end = src.vertexStart + src.vertexCount;
++			for (size_t k = 0; k < m_vertices.size(); ++k) {
++				const uint32_t o = m_origVertexIndex[k];
++				if (o < begin || o >= end)
++					continue;
++				const auto* p = reinterpret_cast<const RE::NiPoint3*>(data + static_cast<size_t>(o - begin) * 16);
++				m_vertices[k].m_skinPos = convertNi(*p);
++			}
++		}
++	}
++
+ 	void SkyrimBody::internalUpdate()
+ 	{
+ 		if (m_disabled)
+ 			return;
++		if (!m_morphSources.empty())
++			refreshMorphedPositions();
+ 		SkinnedMeshBody::internalUpdate();
+ 	}
+ }
+diff --git a/src/hdtSkyrimBody.h b/src/hdtSkyrimBody.h
+index 7e89e56..7caf5f8 100644
+--- a/src/hdtSkyrimBody.h
++++ b/src/hdtSkyrimBody.h
+@@ -30,5 +30,18 @@ namespace hdt
+ 
+ 		bool canCollideWith(const SkinnedMeshBody* body) const override;
+ 		void internalUpdate() override;
++
++		// [FacialMorphCollision] Face geometry (BSDynamicTriShape) gets its vertices rewritten by the game every time
++		// facial morphs change (expressions, phonemes, MFEE, PPA...). Stock FSMP only reads those positions once when the
++		// system is built, so collisions use the neutral face. We keep a reference to the dynamic shape and re-read the
++		// morphed positions before every skinning update.
++		struct MorphSource
++		{
++			RE::NiPointer<RE::BSDynamicTriShape> shape;
++			uint32_t vertexStart = 0;  // first vertex of this mesh in the (pre-compaction) body vertex list
++			uint32_t vertexCount = 0;
++		};
++		std::vector<MorphSource> m_morphSources;
++		void refreshMorphedPositions();
+ 	};
+ }
+diff --git a/src/hdtSkyrimSystem.cpp b/src/hdtSkyrimSystem.cpp
+index 60579fe..0b7de5b 100644
+--- a/src/hdtSkyrimSystem.cpp
++++ b/src/hdtSkyrimSystem.cpp
+@@ -761,6 +761,10 @@ namespace hdt
+ 			if (dynamicShape)
+ 				dynamicVData = static_cast<uint8_t*>(dynamicShape->GetDynamicTrishapeRuntimeData().dynamicData);
+ 
++			// [FacialMorphCollision] keep the face geometry so its morphed vertices can be re-read every update
++			if (dynamicShape && dynamicVData)
++				body->m_morphSources.push_back({ RE::NiPointer<RE::BSDynamicTriShape>(dynamicShape), static_cast<uint32_t>(vertexStart), static_cast<uint32_t>(skinPartition->vertexCount) });
++
+ 			uint8_t boneOffset = 0;
+ 
+ 			if (vFlags & RE::BSGraphics::Vertex::Flags::VF_VERTEX)
