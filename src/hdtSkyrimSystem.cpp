@@ -764,6 +764,9 @@ namespace hdt
 			// [FacialMorphCollision] keep the face geometry so its morphed vertices can be re-read every update
 			if (dynamicShape && dynamicVData)
 				body->m_morphSources.push_back({ RE::NiPointer<RE::BSDynamicTriShape>(dynamicShape), static_cast<uint32_t>(vertexStart), static_cast<uint32_t>(skinPartition->vertexCount) });
+			// [BodyMorphCollision] everything else (bodies, armor, schlongs): follow body-morph vertex buffer swaps
+			else if (vertexBlock)
+				body->m_meshSources.push_back({ RE::NiPointer<RE::BSTriShape>(triShape), static_cast<uint32_t>(vertexStart), static_cast<uint32_t>(skinPartition->vertexCount), vertexBlock });
 
 			uint8_t boneOffset = 0;
 

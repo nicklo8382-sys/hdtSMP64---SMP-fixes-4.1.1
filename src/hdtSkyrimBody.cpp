@@ -73,12 +73,64 @@ namespace hdt
 		}
 	}
 
+	void SkyrimBody::refreshMeshPositions()
+	{
+		if (m_origVertexIndex.size() != m_vertices.size())
+			return;
+
+		// full re-read every ~10 s of updates even if the buffer pointer is unchanged (covers in-place edits)
+		const bool periodic = (++m_meshRefreshCounter % 600) == 0;
+
+		for (auto& src : m_meshSources) {
+			auto* shape = src.shape.get();
+			if (!shape || !src.vertexCount)
+				continue;
+
+			auto* skinInstance = shape->GetGeometryRuntimeData().skinInstance.get();
+			if (!skinInstance)
+				continue;
+			// hold a reference so the partition can't be freed under us if a morph swaps it mid-read
+			RE::NiPointer<RE::NiSkinPartition> skinPartition = skinInstance->skinPartition;
+			if (!skinPartition || skinPartition->numPartitions == 0 || skinPartition->vertexCount != src.vertexCount)
+				continue;
+
+			auto* partition = skinPartition->partitions.data();
+			if (!partition || !partition->buffData)
+				continue;
+			const uint8_t* vertexBlock = partition->buffData->rawVertexData;
+			if (!vertexBlock)
+				continue;
+			if (vertexBlock == src.lastData && !periodic)
+				continue;
+
+			const auto vFlags = partition->vertexDesc.GetFlags();
+			if (!(vFlags & RE::BSGraphics::Vertex::Flags::VF_VERTEX))
+				continue;
+			const auto vSize = partition->vertexDesc.GetSize();
+			if (!vSize)
+				continue;
+
+			const uint32_t begin = src.vertexStart;
+			const uint32_t end = src.vertexStart + src.vertexCount;
+			for (size_t k = 0; k < m_vertices.size(); ++k) {
+				const uint32_t o = m_origVertexIndex[k];
+				if (o < begin || o >= end)
+					continue;
+				const auto* p = reinterpret_cast<const RE::NiPoint3*>(vertexBlock + static_cast<size_t>(o - begin) * vSize);
+				m_vertices[k].m_skinPos = convertNi(*p);
+			}
+			src.lastData = vertexBlock;
+		}
+	}
+
 	void SkyrimBody::internalUpdate()
 	{
 		if (m_disabled)
 			return;
 		if (!m_morphSources.empty())
 			refreshMorphedPositions();
+		if (!m_meshSources.empty())
+			refreshMeshPositions();
 		SkinnedMeshBody::internalUpdate();
 	}
 }
